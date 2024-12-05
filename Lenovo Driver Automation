@@ -1,3 +1,4 @@
+# Put the four character lenovo device model into a variable
 function Get-LenovoComputerModel() {
     $lenovoVendor = (Get-CimInstance -ClassName Win32_ComputerSystemProduct).Vendor
     if ($lenovoVendor = "LENOVO") {
@@ -8,6 +9,7 @@ function Get-LenovoComputerModel() {
         exit 1
     }  
 }
+# Checks the LSUClient module is loaded
 function Load-LSUClientModule() {
     if (-NOT(Get-Module -Name LSUClient)) {
         Write-Verbose -Verbose "LSUClient module not loaded. Continuing."
@@ -25,6 +27,7 @@ function Load-LSUClientModule() {
         Write-Verbose -Verbose "LSUClient module already imported and loaded."
     }
 }
+# Checks the Lenovo Client Scripting module is loaded
 function Load-LenovoClientScriptingModule() {
     if (-NOT(Get-Module -Name Lenovo.Client.Scripting)) {
         Write-Verbose -Verbose "Lenovo Client Scripting module not loaded. Continuing."
@@ -42,14 +45,14 @@ function Load-LenovoClientScriptingModule() {
         Write-Verbose -Verbose "Lenovo Client Scripting module already imported and loaded."
     }
 }
-#Function for locating and installing all drivers and BIOS which can be installed silent and unattended
+# Runs the LSUClient to install drivers and bios updates for all models
 function Run-LSUClientModuleDefault() {
     $updates = Get-LSUpdate | Where-Object { $_.Installer.Unattended }
     foreach ($update in $updates) {
         Install-LSUpdate $update -Verbose
     }
 }
-#Function for downloading the Bios updates for specific models when the bios file is only listed as a certain OS. In this case 20R4, where Windows 10 is the only identified OS for the update, and update is skipped when imaging with windows 11.
+# Function for downloading the Bios updates for a model when the desired OS is different from the lenovo catalog listing.
 function Run-LenovoClientScriptingModuleDefault() {
     Get-LnvUpdatesRepo -MachineType $global:lenovoModel -WindowsVersion '10' -PackageTypes '3' -RepositoryPath 'C:\Lenovo\Bios'
     # Set the base directory to start searching from
@@ -72,6 +75,7 @@ try {
     Load-LenovoClientScriptingModule
     Load-LSUClientModule
     Get-LenovoComputerModel
+    # Define older models here that need to get bios updates classified as windows 10 when windows 11 is the installed OS.
     if ($global:lenovoModel -eq "20R4") {
         Write-Verbose -Verbose "Running LSUClient and Lenovo Client Scripting module"
         Run-LSUClientModuleDefault
