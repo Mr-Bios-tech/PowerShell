@@ -1,0 +1,88 @@
+function Get-LenovoComputerModel() {
+    $lenovoVendor = (Get-CimInstance -ClassName Win32_ComputerSystemProduct).Vendor
+    if ($lenovoVendor = "LENOVO") {
+        Write-Verbose -Verbose "Lenovo device is detected. Continuing."
+        $global:lenovoModel = Get-LnvMachineType
+    } else {
+        Write-Verbose -Verbose "Not a Lenovo device. Aborting."
+        exit 1
+    }  
+}
+function Load-LSUClientModule() {
+    if (-NOT(Get-Module -Name LSUClient)) {
+        Write-Verbose -Verbose "LSUClient module not loaded. Continuing."
+        if (Get-Module -Name LSUClient -ListAvailable) {
+            Write-Verbose -Verbose "LSUClient module found available. Try importing and loading it."
+            try {
+                Import-Module -Name LSUClient
+                Write-Verbose -Verbose "Successfully imported and loaded the LSUClient module."
+            } catch {
+                Write-Verbose -Verbose "Failed to import the LSUClient module. Aborting."
+                exit 1
+            }
+        }
+    } else {
+        Write-Verbose -Verbose "LSUClient module already imported and loaded."
+    }
+}
+function Load-LenovoClientScriptingModule() {
+    if (-NOT(Get-Module -Name Lenovo.Client.Scripting)) {
+        Write-Verbose -Verbose "Lenovo Client Scripting module not loaded. Continuing."
+        if (Get-Module -Name Lenovo.Client.Scripting -ListAvailable) {
+            Write-Verbose -Verbose "Lenovo Client Scripting module found available. Try importing and loading it."
+            try {
+                Import-Module -Name Lenovo.Client.Scripting
+                Write-Verbose -Verbose "Successfully imported and loaded the Lenovo Client Scripting module."
+            } catch {
+                Write-Verbose -Verbose "Failed to import the Lenovo Client Scripting module. Aborting."
+                exit 1
+            }
+        }
+    } else {
+        Write-Verbose -Verbose "Lenovo Client Scripting module already imported and loaded."
+    }
+}
+#Function for locating and installing all drivers and BIOS which can be installed silent and unattended
+function Run-LSUClientModuleDefault() {
+    $updates = Get-LSUpdate | Where-Object { $_.Installer.Unattended }
+    foreach ($update in $updates) {
+        Install-LSUpdate $update -Verbose
+    }
+}
+#Function for downloading the Bios updates for specific models when the bios file is only listed as a certain OS. In this case 20R4, where Windows 10 is the only identified OS for the update, and update is skipped when imaging with windows 11.
+function Run-LenovoClientScriptingModuleDefault() {
+    Get-LnvUpdatesRepo -MachineType $global:lenovoModel -WindowsVersion '10' -PackageTypes '3' -RepositoryPath 'C:\Lenovo\Bios'
+    # Set the base directory to start searching from
+    $baseDir = "C:\Lenovo\Bios\"
+    $exePath = "C:\Lenovo\EXTRACTED\winuptp.exe"
+
+    # Get all executable files (.exe) recursively from the directory
+    $executables = Get-ChildItem -Path $baseDir -Recurse -File -Include *.exe
+
+    # Loop through each executable and run it
+    foreach ($exe in $executables) {
+        Write-Host "Running: $($exe.FullName)"
+        Start-Process -FilePath $exe.FullName -ArgumentList "/VERYSILENT /DIR=C:\Lenovo\EXTRACTED\ /EXTRACT=YES" -Wait
+        Set-Location -Path "C:\Lenovo\EXTRACTED\"
+        Start-Process -FilePath $exePath -ArgumentList "/s" -Wait
+}
+}
+try {
+    Write-Verbose -Verbose "Script is running."
+    Load-LenovoClientScriptingModule
+    Load-LSUClientModule
+    Get-LenovoComputerModel
+    if ($global:lenovoModel -eq "20R4") {
+        Write-Verbose -Verbose "Running LSUClient and Lenovo Client Scripting module"
+        Run-LSUClientModuleDefault
+        Run-LenovoClientScriptingModuleDefault
+    } else {
+        Write-Verbose -Verbose "Running LSUClient"
+        Run-LSUClientModuleDefault
+    }
+}
+catch [Exception] {
+    Write-Verbose -Verbose "Script failed to carry out one or more actions."
+    Write-Verbose -Verbose $_.Exception.Message
+    exit 1
+}
